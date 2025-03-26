@@ -1,0 +1,121 @@
+import numpy as np
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.utils import resample
+from sklearn.metrics import accuracy_score
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+
+class RandomForest:
+    def _init_(self, n_estimators=100, max_depth=None, max_features='sqrt', random_state=None):
+        """
+        Initialize the Random Forest.
+        
+        Parameters:
+        - n_estimators: Number of trees in the forest
+        - max_depth: Maximum depth of each tree
+        - max_features: Number of features to consider at each split ('sqrt' for square root of total features)
+        - random_state: Seed for reproducibility
+        """
+        self.n_estimators = n_estimators
+        self.max_depth = max_depth
+        self.max_features = max_features
+        self.random_state = random_state
+        self.trees = []
+        self.feature_indices = []  # Stores feature indices used for each tree
+        
+    def fit(self, X, y):
+        """
+        Train the Random Forest on the given data.
+        
+        Parameters:
+        - X: Feature matrix (n_samples, n_features)
+        - y: Target vector (n_samples,)
+        """
+        np.random.seed(self.random_state)
+        n_samples, n_features = X.shape
+        
+        # Determine number of features to use at each split
+        if self.max_features == 'sqrt':
+            max_features = int(np.sqrt(n_features))
+        elif isinstance(self.max_features, int):
+            max_features = self.max_features
+        else:
+            max_features = n_features
+            
+        self.trees = []
+        self.feature_indices = []
+        
+        for _ in range(self.n_estimators):
+            # Bootstrap sample (with replacement)
+            X_sample, y_sample = resample(X, y, random_state=self.random_state)
+            
+            # Randomly select features
+            features = np.random.choice(n_features, max_features, replace=False)
+            X_sample = X_sample[:, features]
+            
+            # Train decision tree
+            tree = DecisionTreeClassifier(
+                max_depth=self.max_depth,
+                random_state=self.random_state
+            )
+            tree.fit(X_sample, y_sample)
+            
+            # Store the tree and the features used
+            self.trees.append(tree)
+            self.feature_indices.append(features)
+    
+    def predict_proba(self, X):
+        """
+        Predict class probabilities by averaging predictions from all trees.
+        
+        Parameters:
+        - X: Feature matrix (n_samples, n_features)
+        
+        Returns:
+        - proba: Array of shape (n_samples, n_classes) with class probabilities
+        """
+        n_samples = X.shape[0]
+        all_proba = []
+        
+        for tree, features in zip(self.trees, self.feature_indices):
+            # Predict using only the features this tree was trained on
+            X_subset = X[:, features]
+            tree_proba = tree.predict_proba(X_subset)
+            all_proba.append(tree_proba)
+        
+        # Average probabilities across all trees
+        avg_proba = np.mean(all_proba, axis=0)
+        return avg_proba
+    
+    def predict(self, X):
+        """
+        Predict class labels by taking the majority vote from all trees.
+        
+        Parameters:
+        - X: Feature matrix (n_samples, n_features)
+        
+        Returns:
+        - pred: Array of shape (n_samples,) with class predictions
+        """
+        proba = self.predict_proba(X)
+        return np.argmax(proba, axis=1)
+
+# Example usage
+if _name_ == "_main_":
+    # Load sample dataset
+    data = load_iris()
+    X, y = data.data, data.target
+    
+    # Split into train and test sets
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Initialize and train Random Forest
+    rf = RandomForest(n_estimators=100, max_depth=3, random_state=42)
+    rf.fit(X_train, y_train)
+    
+    # Make predictions
+    y_pred = rf.predict(X_test)
+    
+    # Evaluate accuracy
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Random Forest Accuracy: {accuracy:.4f}")
